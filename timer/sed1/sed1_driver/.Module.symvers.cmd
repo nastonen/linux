@@ -1,0 +1,1 @@
+savedcmd_/home/untitled/timer/sed1/sed1_driver/Module.symvers :=  scripts/mod/modpost -M        -o /home/untitled/timer/sed1/sed1_driver/Module.symvers -T /home/untitled/timer/sed1/sed1_driver/modules.order -i Module.symvers -e 

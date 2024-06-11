@@ -1,0 +1,1 @@
+savedcmd_/home/untitled/timer/sed1/sed1_driver/sed1_drv.ko := ld -r -EL  -maarch64elf -z noexecstack --no-warn-rwx-segments --build-id=sha1  -T scripts/module.lds -o /home/untitled/timer/sed1/sed1_driver/sed1_drv.ko /home/untitled/timer/sed1/sed1_driver/sed1_drv.o /home/untitled/timer/sed1/sed1_driver/sed1_drv.mod.o;  true

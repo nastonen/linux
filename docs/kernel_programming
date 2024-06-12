@@ -1,5 +1,8 @@
 /**
-Instead of having to interactively go through each menu item and selecting the <Help> button to see what it’s about, a much simpler way to gain the same help information is to peek inside the relevant Kconfig* file (that describes the menu). Here, it’s lib/Kconfig.debug, as all (well, most) debug-related menus are there.
+Instead of having to interactively go through each menu item and selecting the <Help> button
+to see what it’s about, a much simpler way to gain the same help information is to peek
+inside the relevant Kconfig* file (that describes the menu). Here, it’s lib/Kconfig.debug,
+as all (well, most) debug-related menus are there.
 */
 
 cscope

@@ -1,0 +1,99 @@
+--------------
+---- MMIO ----
+
+1. Before I/O: Request access to the memory or port region.
+2. Having received the green light from the kernel core,
+   perform the actual I/O: You use either MMIO or PMIO to do this.
+3. After I/O: Release the memory or port region back to the OS.
+
+--- deprecated old way ---
+#include <linux/ioport.h>
+
+MMIO:
+request_mem_region(start, n, name);
+release_mem_region(start, n);
+
+PMIO:
+request_region(start, n, name);
+release_region(start, n);
+
+start - beginning of I/O memory region or port;
+        for MMIO it's a physical (bus) address,
+        for PMIO it's a port number
+n - length of the requested region
+name - any string, usually name of the driver, will be in /proc
+
+#include <asm/io.h>
+#define GPIO_REG_BASE    0x7e200000
+#define GPIO_REG_LEN     41 * 4 // 41 registeres 32 bit each
+static void __iomem *iobase = ioremap(GPIO_REG_BASE, GPIO_REG_LEN);
+...
+iounmap(iobase);
+---
+
+-- new way ---
+Device Tree Source/Blob - DTS/DTB
+struct resource *r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+priv->base = devm_ioremap_resource(dev, r);
+// resource will be freed automatically on device detach / driver unload or error
+release_mem_region(); // still need to release MMIO back to kernel!
+---
+
+Read/write MMIO:
+
+#include <linux/io.h>
+
+u8 ioread8(const volatile void __iomem *addr);
+u16 ioread16(const volatile void __iomem *addr);
+u32 ioread32(const volatile void __iomem *addr);
+#ifdef CONFIG_64BIT
+u64 ioread64(const volatile void __iomem *addr);
+#endif
+
+void iowrite8(u8 value, volatile void __iomem *addr);
+void iowrite16(u16 value, volatile void __iomem *addr);
+void iowrite32(u32 value, volatile void __iomem *addr);
+#ifdef CONFIG_64BIT
+void u64 iowrite64(u64 value, const volatile void __iomem *addr);
+#endif
+
+// repeated reads/writes
+ioread[8|16|32|64]_rep()
+iowrite[8|16|32|64]_rep()
+void ioread8_rep(const volatile void __iomem *addr, void *buffer, unsigned int count);
+void iowrite8_rep(volatile void __iomem *addr, const void *buffer, unsigned int count);
+
+// endianness
+ioread32be() // big endian
+
+void memset_io(volatile void __iomem *addr, int value, size_t size);
+void memcpy_fromio(void *buffer, const volatile void __iomem *addr, size_t size);
+void memcpy_toio(volatile void __iomem *addr, const void *buffer, size_t size);
+
+
+--------------------
+---- PMIO (PIO) ----
+Port mapped IO, mainy used in old x86 systems
+ARM doesn't have PMIO, everything is memory-mapped
+/proc/ioports
+
+request_region() / release_region()
+
+#include <linux/io.h>
+
+u8 inb(unsigned long addr);
+u16 inw(unsigned long addr);
+u32 inl(unsigned long addr);”
+
+void outb(u8 value, unsigned long addr);
+void outw(u16 value, unsigned long addr);
+void outl(u32 value, unsigned long addr);
+
+// also has repeated reads/writes helpers
+void insb(unsigned long addr, void *buffer, unsigned int count);
+void insw(unsigned long addr, void *buffer, unsigned int count);
+void insl(unsigned long addr, void *buffer, unsigned int count);
+
+void outsb(unsigned long addr, const void *buffer, unsigned int count);
+void outsw(unsigned long addr, const void *buffer, unsigned int count);
+void outsl(unsigned long addr, const void *buffer, unsigned int count);

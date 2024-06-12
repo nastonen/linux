@@ -1,0 +1,108 @@
+--- procfs - forbidden for drivers ---
+// pseudo files, exist only in RAM
+#include <linux/proc_fs.h>
+// create dir under /proc
+// name - dir name
+// parent -- parent dir, NULL = /proc
+struct proc_dir_entry *proc_mkdir(const char *name, struct proc_dir_entry *parent);
+
+// create file under /proc
+struct proc_dir_entry *proc_create(const char *name, umode_t mode, struct proc_dir_entry *parent, const struct file_operations *proc_fops);
+
+// remove
+void remove_proc_entry(const char *name, struct proc_dir_entry *parent);
+// or, better
+remove_proc_subtree();
+---
+
+--- sysfs - the correct way ---
+shows:
+- every bus on the system
+- every device on every bus
+- every device driver bound to device on the bus
+
+#include <linux/platform_device.h>
+static struct platform_device *sysfs_demo_platdev;
+#define PLAT_NAME "llkd_sysfs_simple_intf_device"
+sysfs_demo_platdev = platform_device_register_simple(PLAT_NAME, -1, NULL, 0);
+
+#define SYSFS_FILE1 llkdsysfs_debug_level
+static DEVICE_ATTR_RW(SYSFS_FILE1);
+
+// 1. Create our first sysfile file : llkdsysfs_debug_level
+/* The device_create_file() API creates a sysfs attribute file for
+ * given device (1st parameter); the second parameter is the pointer
+ * to it's struct device_attribute structure dev_attr_<name> which was
+ * instantiated by our DEV_ATTR{_RW|RO} macros above ...
+ */
+stat = device_create_file(&sysfs_demo_platdev->dev,  &dev_attr_SYSFS_FILE1);
+
+// read callback
+/* debug_level: sysfs entry point for the 'show' (read) callback */
+static ssize_t llkdsysfs_debug_level_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+}
+
+// write callback
+static ssize_t llkdsysfs_debug_level_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+}
+---
+
+--- debugfs ---
+https://www.kernel.org/doc/Documentation/filesystems/debugfs.txt
+
+$ zcat /proc/config.gz | grep -w CONFIG_DEBUG_FS
+$ mount | grep -w debugfs
+debugfs on /sys/kernel/debug type debugfs (rw,relatime)
+
+static struct dentry *gparent;
+gparent = debugfs_create_dir(OURMODNAME, NULL);
+
+static const struct file_operations dbgfs_drvctx_fops = {
+    .read = dbgfs_show_drvctx
+};
+/* Generic debugfs file + passing a pointer to a data structure as a
+ * demo.. the 4th param is a generic void
+ * ptr; it's contents will be
+ * stored into the i_private field of the file's inode.
+ */
+#define DBGFS_FILE1 "llkd_dbgfs_show_drvctx"
+file1 = debugfs_create_file(DBGFS_FILE1, 0440, gparent, (void *)gdrvctx, &dbgfs_drvctx_fops);
+// or for one int rw
+// preferred not to use because no error handling of this int
+// (can be under/over allowed limit: 5 (allowed 0-2)
+file2 = debugfs_create_u32(DBGFS_FILE2, 0644, gparent, &debug_level);
+// other debugfs_create_* helpers exits, also for hexadecimal numbers and bool
+
+// remove
+void debugfs_remove_recursive(struct dentry *dentry);
+---
+
+--- netlink sockets ---
+// basically sockets
+// kernel can initiate data transfer to user space
+// 'connector' driver exists inside the kernel for easier netlink programming:
+https://elixir.bootlin.com/linux/v5.4/source/Documentation/driver-api/connector.rst
+---
+
+--- ioctl system call ---
+https://github.com/torvalds/linux/tree/master/Documentation/userspace-api/ioctl
+https://www.kernel.org/doc/Documentation/ioctl/botching-up-ioctls.txt
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)
+    .unlocked_ioctl = ioctl_intf_ioctl, // use the 'unlocked' version
+#else
+    .ioctl = ioctl_intf_ioctl, // 'old' way
+#endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)
+    static long ioctl_intf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+#else
+    static int ioctl_intf_ioctl(struct inode *ino, struct file *filp, unsigned int cmd, unsigned long arg)
+#endif
+{
+}
+---
+
+I2C: https://www.kernel.org/doc/html/latest/i2c/writing-clients.html

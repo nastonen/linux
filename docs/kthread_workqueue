@@ -1,0 +1,61 @@
+--- kernel thread ---
+// Runs in parallel on the background;
+// Usually set to sleep and woken up when needed.
+// Can't move data to user space because only runs in kernel VAS
+// Should protect critical sections
+#include <linux/kthread.h>
+static struct task_struct *ts;
+...
+// create and wake the thread.
+// or call kthread_create() + wake_up_process() separately
+// @threadfn - the function to run
+// @data - anything passed via void*
+// @namefmt - printf-style name for the thread (seen in 'ps' output)
+ts = kthread_run(simple_kthread, NULL, "llkd/%s", KTHREAD_NAME);
+// increment the kthread task structure's reference count,
+// making it as being in use
+get_task_struct(ts);
+while (!kthread_should_stop()) {
+    ...
+}
+...
+// waits for kthread to terminate,
+// also calls put_task_struct() to decrement ref count.
+// next kthread_should_stop() call will return true
+kthread_stop(ts);
+-----------------------
+
+--- workqueues ---
+Concurrency Managed Work Queue (cmwq) framework in the kernel
+uses kernel-global workqueues, this is preferred. Although
+you can create your own workqueues.
+
+#include <linux/workqueue.h>
+
+// if you want to create your own workqueue:
+struct workqueue_struct *alloc_workqueue(const char *fmt, unsigned int flags, int max_active, ...);
+
+// using kernel-global workqueue:
+// create and allocate struct work_struct *_work
+INIT_WORK(struct work_struct *_work, work_func_t _func);    // init work
+// returns %false if @work was already on the
+// kernel-global workqueue and %true otherwise
+bool schedule_work(struct work_struct *work);               // start work
+
+// delayed start:
+// create and allocate struct delayed_work
+INIT_DELAYED_WORK()
+// @delay in jiffies, use e.g. msecs_to_jiffies(n)
+bool schedule_delayed_work(struct delayed_work *dwork, unsigned long delay);
+
+// cleanup
+// _sync means we will wait for completion of the work task
+// before the function returns; it's usually what we want
+// returns %true if there was work pending, %false otherwise
+bool cancel_work(struct work_struct *work);
+bool cancel_work_sync(struct work_struct *work);
+bool cancel_delayed_work(struct delayed_work *dwork);
+bool cancel_delayed_work_sync(struct delayed_work *dwork);
+
+// flush_*() methods are dangerous, don't use them!
+------------------

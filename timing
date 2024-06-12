@@ -1,0 +1,58 @@
+1. Non-blocking or atomic *delay() kernel APIs. Meant to be used in any kind of atomic or interrupt context where you cannot block or sleep (or invoke schedule()):
+
+#include <linux/delay.h>
+ndelay(ns); // nanoseconds; this precision may not exist on many non-PC devices
+udelay(us); // microseconds; preferred API
+mdelay(ms); // milliseconds; discouraged
+
+2. Blocking *sleep*() kernel APIs. These are only meant to be used in the process context when it's safe to sleep; that is, where the invocation of schedule() is not a problem. The delay is implemented by the process context actually going to sleep for the duration of the delay and is then woke up when it's done.
+Do not use within a spinlock(), it's atomic ctx!
+
+#include <linux/delay.h>
+// use udelay(ns) if sleeping for < 10us
+usleep_range(umin, umax); // 10us - 20ms
+                          // backed by HR-timers, preferred!
+                          // sleep between umin and umax microseconds. Use where wakeup
+                          // time if flexible. This is the recommended API to use.
+
+// backed by jiffies / legacy_timers
+msleep(ms); // milliseconds; meant for a sleep of >= 10ms
+msleep_interruptible(ms);
+ssleep(s); // seconds; meant for a sleep of > 1s (wrapper over msleep())
+
+----- time -----
+https://www.kernel.org/doc/html/v6.9/core-api/timekeeping.html
+
+#include <linux/ktime.h>
+(includes <linux/timekeeping.h>
+u64 ktime_get_real_ns(void);
+ktime_get_real_fast_ns();
+etc
+
+t1 = ktime_get_real_ns();
+foo();
+bar();
+t2 = ktime_get_real_ns();
+time_taken_ns = (t2 -> t1);
+----------------
+
+--- timers ---
+#include <linux/timer.h>
+struct timer_list;
+timer_setup(timer, callback, flags);
+void add_timer(struct timer_list *timer);
+
+// example
+static struct st_ctx {
+    struct timer_list tmr;
+    int data;
+} ctx;
+static unsigned long exp_ms = 420;
+
+/* Initialize our kernel timer */
+ctx.tmr.expires = jiffies + msecs_to_jiffies(exp_ms);
+ctx.tmr.flags = 0;
+timer_setup(&ctx.tmr, ding, 0);
+...
+add_timer(&ctx.tmr); /* Arm it; let's get going! */
+--------------

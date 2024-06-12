@@ -1,0 +1,1 @@
+the scheduler must never ever run in any kind of atomic context (which includes interrupt context)

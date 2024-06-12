@@ -1,0 +1,146 @@
+[IO][A]PIC, short for IO-[Advanced] Programmable Interrupt Controller
+    for a generic interrupt controller (GIC) on ARM
+
+Interrupts are ATOMIC context, so don't:
+   <=== (DOES NOT concern threaded irq!!!) ===>
+- copy to and from userspace, because can cause page fault
+- use GFP_KERNEL, use GFP_ATOMIC instead
+- any blocks, calls to schedule()
+- allocate memory (it's slow)
+
+They should be very fast. Worst case interrupt length (irq disabled time) is important.
+How fast is fast? Tens of microseconds. If >100us, threaded interrupt should be used.
+
+Threaded irq runs in process context, not in interrupt conext!
+
+// check that sleeps occur inside interrupts / atomic sections
+make menuconfig
+Kernel Hacking -> Lock Debugging
+CONFIG_DEBUG_ATOMIC_SLEEP
+
+might_resched(), cant_sleep(), non_block_start(), non_block_end(), and so on
+
+Interrupts can be
+- level-triggered: irq remains active even after the handler function returns
+    and you'll get another interrupt if not put off. E.g. if interrupt triggeres
+    when a register gets value 0xff, you have to set reg value to e.g. 0x0 to stop it.
+- edge-triggered: triggered only once; usually this one is used; read the datasheet!
+
+in_irq() - checks if the code is in hardirq context.
+
+
+1. Register interrupt line in probe() function
+#include <linux/interrupt.h>
+request_irq() - old
+request_threaded_irq() - old
+devm_request_irq() - recommended
+devm_request_threaded_irq() - recommended
+
+// frees resources automatically, no need to call free_irq()
+int __must_check
+devm_request_irq(struct device *dev, unsigned int irq, irq_handler_t handler,
+                 unsigned long irqflags, const char *devname, void *dev_id);
+dev - 'device' structure, gained thru registering to apporopriate kernel framework
+irq - irq number (line)
+handler - handler function:
+    static irqreturn_t interrupt_handler(int irq, void *data);
+devname - any string, typically driver name
+dev_id - driver context struct
+
+////////////////////////////////////////
+// example: get irc line and register it
+res = platform_get_resource(mixer_ctx->pdev, IORESOURCE_IRQ, 0);
+if (res == NULL) {
+    dev_err(dev, "get interrupt resource failed.\n");
+    return -ENXIO;
+}
+ret = devm_request_irq(dev, res->start, mixer_irq_handler, 0, "drm_mixer", mixer_ctx);
+////////////////////////////////////////
+
+
+// if interrupt takes long time (>100us), run it in a separate kernel thread
+// frees resources automatically, no need to call free_irq()
+int __must_check
+devm_request_threaded_irq(struct device *dev, unsigned int irq, irq_handler_t handler,
+                      irq_handler_t thread_fn, unsigned long irqflags, const char *devname, void *dev_id);
+
+3 & 4 params: “static irqreturn_t threaded_handler(int irq, void *data);”
+
+The primary handler if specified (third parameter), is run in what's referred to as the hardirq or hard interrupt context (as was the case with request_irq()). If the primary handler is non-null, then you are expected to write it's code and (minimally) do the following in it:
+
+- Verify the interrupt is for you; if it's not, return IRQ_NONE.
+- If it is for you, then you can clear and/or disable the interrupt on the board/device.
+- Return IRQ_WAKE_THREAD; this will cause the kernel to wake up the kernel thread representing your threaded interrupt handler. The name of the kernel thread will be in the format irq/irq#-name. This kernel thread will now internally invoke the thread_fn() function, where you perform the actual interrupt handling work.
+
+On the other hand, if the primary handler is null, then just your threaded handler – the function specified by the fourth parameter – will be automatically run as a kernel thread by the OS when the interrupt fires.
+The return value from devm_request_threaded_irq() is an integer, following the usual 0/-E kernel convention: 0 on success and a negative errno value on failure; you are expected to check it.
+
+Threaded interrupts often use the IRQF_ONESHOT interrupt flag; the kernel comment in include/linux/interrupt.h describes it best:
+ * IRQF_ONESHOT - Interrupt is not reenabled after the hardirq handler finished.
+ * Used by threaded interrupts which need to keep the
+ * irq line disabled until the threaded handler has been run.
+ * IF NOT USED, irq line will be enabled while executing the irq!
+
+
+-----------------
+// kernel automatically picks if irq will run in hardirq or threaded (I2C)
+int __must_check
+request_any_context_irq(unsigned int irq, irq_handler_t handler,
+                       unsigned long flags, const char *name, void *dev_id);
+
+returns IRQC_IS_HARDIRQ if hardirq or IRQC_IS_NESTED if threaded or negative on error
+-----------------
+
+----- tasklet ----
+// bottom half doesn't mask interrupts so hardirq can still occur,
+// but never runs in parallel with itself!
+
+// if hardirq and softirq process the same data,
+// use spin_lock_bh()
+
+#include <linux/interrrupt.h>
+static struct tasklet_struct *ts;
+[...]
+static int __init mydriver_init(void)
+{
+    struct device *dev;
+    [...]
+    /* Register the device with the kernel 'misc' driver framework */
+    ret = misc_register(&keylog_miscdev);
+    dev = keylog_miscdev.this_device;
+    ts = devm_kzalloc(dev, sizeof(struct tasklet_struct), GFP_KERNEL);
+    tasklet_init(ts, mydrv_tasklet, 0);
+    ret = devm_request_irq(dev, MYDRV_IRQ, my_hardirq_handler, IRQF_SHARED, OURMODNAME, THIS_MODULE);
+    [...]
+}
+
+/ * Our 'bottom half' tasklet routine */
+static void mydrv_tasklet(unsigned long data)
+{
+    process_it();  // majority of the interrupt work done here
+}
+
+/* Our 'hardirq' interrupt handler routine - our 'top half' */
+static irqreturn_t my_hardirq_handler(int irq, void *data)
+{
+    /* minimal work: ack/disable hardirq, fetch and/or queue data, etc ... */
+    tasklet_schedule(ts);
+    return IRQ_HANDLED;
+}
+-------------------
+
+// to print context of code, use convenient.h PRINT_CTX() or
+
+#include/linux/preempt.h
+(do not rely on in_interrupt() / in softirq(), use in_task() instead
+/*
+ * Are we doing bottom half or hardware interrupt processing?
+ *
+ * in_irq()       - We're in (hard) IRQ context
+ * in_softirq()   - We have BH disabled, or are processing softirqs
+ * in_interrupt() - We're in NMI,IRQ,SoftIRQ context or have BH disabled
+ * in_serving_softirq() - We're in softirq context
+ * in_nmi()       - We're in NMI context
+ * in_task()      - We're in task context
+ [...]
+ */

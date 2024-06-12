@@ -38,13 +38,11 @@ static int identity_create(char *name, int id)
 
 static struct identity *identity_find(int id)
 {
-	struct identity *found = NULL;
+	struct identity *found;
 
-	list_for_each_entry(found, &head_node, list) {
-		if (found->id == id) {
-			break;
-		}
-	}
+	list_for_each_entry(found, &head_node, list)
+		if (found->id == id)
+			return found;
 
 	return NULL;
 }
@@ -109,8 +107,6 @@ static int __init list_init(void)
 	temp = identity_find(2);
 	if (likely(temp == NULL))
 		pr_debug("id 2 not found\n");
-	else
-		pr_debug("id 2 = %s\n", temp->name);
 
 	return 0;
 }

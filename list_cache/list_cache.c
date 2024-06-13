@@ -2,10 +2,12 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/list.h>
+#include <linux/mutex.h>
 
 #define NAME_LEN 20
 
-LIST_HEAD(head_node);
+static LIST_HEAD(head_node);
+static DEFINE_MUTEX(list_mtx);
 
 static struct kmem_cache *g_mem_cache;
 
@@ -28,8 +30,9 @@ static int identity_create(char *name, int id)
 	tmp->id = id;
 	tmp->busy = false;
 
-	INIT_LIST_HEAD(&tmp->list);
+	mutex_lock(&list_mtx);
 	list_add_tail(&tmp->list, &head_node);
+	mutex_unlock(&list_mtx);
 
 	pr_info("Added node %s to the list\n", tmp->name);
 
@@ -38,39 +41,52 @@ static int identity_create(char *name, int id)
 
 static struct identity *identity_find(int id)
 {
-	struct identity *found;
+	struct identity *curr, *found = NULL;
 
-	list_for_each_entry(found, &head_node, list)
-		if (found->id == id)
-			return found;
+	mutex_lock(&list_mtx);
+	list_for_each_entry(curr, &head_node, list) {
+		if (curr->id == id) {
+			found = curr;
+			break;
+		}
+	}
+	mutex_unlock(&list_mtx);
 
-	return NULL;
+	return found;
 }
 
 static void identity_destroy(int id)
 {
-	struct identity *curr, *tmp;
+	struct identity *curr, *tmp, *found = NULL;
 
+	mutex_lock(&list_mtx);
 	list_for_each_entry_safe(curr, tmp, &head_node, list) {
 		if (curr->id == id) {
+			found = curr;
 			list_del(&curr->list);
-			kmem_cache_free(g_mem_cache, curr);
-			pr_debug("Destroyed %d\n", id);
-			return;
+			break;
 		}
 	}
+	mutex_unlock(&list_mtx);
 
-	pr_debug("Tried to destroy %d, but not found\n", id);
+	if (found) {
+		pr_debug("Destroyed %d\n", found->id);
+		kmem_cache_free(g_mem_cache, found);
+	} else {
+		pr_debug("Tried to destroy %d, but not found\n", id);
+	}
 }
 
 static void list_destroy(void)
 {
 	struct identity *curr, *tmp;
 
+	mutex_lock(&list_mtx);
 	list_for_each_entry_safe(curr, tmp, &head_node, list) {
 		list_del(&curr->list);
 		kmem_cache_free(g_mem_cache, curr);
 	}
+	mutex_unlock(&list_mtx);
 }
 
 static int __init list_init(void)

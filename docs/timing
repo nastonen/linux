@@ -1,11 +1,15 @@
-1. Non-blocking or atomic *delay() kernel APIs. Meant to be used in any kind of atomic or interrupt context where you cannot block or sleep (or invoke schedule()):
+1. Non-blocking or atomic *delay() kernel APIs. Meant to be used in any kind of
+atomic or interrupt context where you cannot block or sleep (or invoke schedule()):
 
 #include <linux/delay.h>
 ndelay(ns); // nanoseconds; this precision may not exist on many non-PC devices
 udelay(us); // microseconds; preferred API
 mdelay(ms); // milliseconds; discouraged
 
-2. Blocking *sleep*() kernel APIs. These are only meant to be used in the process context when it's safe to sleep; that is, where the invocation of schedule() is not a problem. The delay is implemented by the process context actually going to sleep for the duration of the delay and is then woke up when it's done.
+2. Blocking *sleep*() kernel APIs. These are only meant to be used in the process
+context when it's safe to sleep; that is, where the invocation of schedule() is
+not a problem. The delay is implemented by the process context actually going to
+sleep for the duration of the delay and is then woke up when it's done.
 Do not use within a spinlock(), it's atomic ctx!
 
 #include <linux/delay.h>

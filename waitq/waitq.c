@@ -204,6 +204,35 @@ static struct miscdevice llkd_miscdev = {
 	.fops = &llkd_misc_fops
 };
 
+static void insert_test_data(void)
+{
+	struct identity *temp;
+
+	identity_create("Alice", atomic_fetch_add(1, &ctx->cnt));
+	identity_create("Bob", atomic_fetch_add(1, &ctx->cnt));
+	identity_create("Dave", atomic_fetch_add(1, &ctx->cnt));
+	identity_create("Gena", atomic_fetch_add(1, &ctx->cnt));
+
+	temp = identity_find(3);
+	if (unlikely(temp == NULL))
+		pr_debug("id 3 not found\n");
+	else
+		pr_debug("id 3 = %s\n", temp->name);
+
+	temp = identity_find(42);
+	if (likely(temp == NULL))
+		pr_debug("id 42 not found\n");
+
+	identity_destroy(2);
+	identity_destroy(2);
+
+	temp = identity_find(2);
+	if (likely(temp == NULL))
+		pr_debug("id 2 not found\n");
+	else
+		pr_debug("id 2 = %s\n", temp->name);
+}
+
 static int __init waitq_init(void)
 {
 	int ret = misc_register(&llkd_miscdev);
@@ -243,32 +272,8 @@ static int __init waitq_init(void)
 	}
 
 
-	/* Test data */
-	struct identity *temp;
-
-	identity_create("Alice", atomic_fetch_add(1, &ctx->cnt));
-	identity_create("Bob", atomic_fetch_add(1, &ctx->cnt));
-	identity_create("Dave", atomic_fetch_add(1, &ctx->cnt));
-	identity_create("Gena", atomic_fetch_add(1, &ctx->cnt));
-
-	temp = identity_find(3);
-	if (unlikely(temp == NULL))
-		pr_debug("id 3 not found\n");
-	else
-		pr_debug("id 3 = %s\n", temp->name);
-
-	temp = identity_find(42);
-	if (likely(temp == NULL))
-		pr_debug("id 42 not found\n");
-
-	identity_destroy(2);
-	identity_destroy(2);
-
-	temp = identity_find(2);
-	if (likely(temp == NULL))
-		pr_debug("id 2 not found\n");
-	else
-		pr_debug("id 2 = %s\n", temp->name);
+	/* Test data. */
+	insert_test_data();
 
 	return 0;
 }
